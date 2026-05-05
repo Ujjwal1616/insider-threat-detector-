@@ -41,7 +41,13 @@ from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import config
-
+import os
+config.DB_HOST     = os.environ.get("DB_HOST",     config.DB_HOST)
+config.DB_PORT     = int(os.environ.get("DB_PORT", str(config.DB_PORT)))
+config.DB_USER     = os.environ.get("DB_USER",     config.DB_USER)
+config.DB_PASSWORD = os.environ.get("DB_PASSWORD", config.DB_PASSWORD)
+config.DB_NAME     = os.environ.get("DB_NAME",     config.DB_NAME)
+config.LOOKBACK_DAYS = int(os.environ.get("LOOKBACK_DAYS", str(config.LOOKBACK_DAYS)))
 warnings.filterwarnings("ignore")
 logging.basicConfig(
     level=logging.INFO,
