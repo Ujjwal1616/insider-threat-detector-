@@ -1,0 +1,11 @@
+flask
+flask-cors
+pymysql
+sqlalchemy
+apscheduler
+scikit-learn
+joblib
+pandas
+numpy
+cryptography
+gdown

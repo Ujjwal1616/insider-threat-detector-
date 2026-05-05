@@ -1,0 +1,17 @@
+DB_HOST     = "localhost"
+DB_PORT     = 3306
+DB_USER     = "root"
+DB_PASSWORD = "Root@123@987"
+DB_NAME     = "insider_threat"
+MODEL_DIR   = "saved_model"
+SCAN_INTERVAL_SECONDS = 30
+LOOKBACK_DAYS         = 9999
+CONTAMINATION         = 0.666
+ALERT_ON_TIERS        = ["HIGH", "CRITICAL"]
+MAX_ALERTS_RETURNED   = 50
+AUTO_SEED_FROM_CSV    = False
+SEED_CSV_PATH         = "data/final_with_insider.csv"
+SEED_MAX_USERS        = 100
+FLASK_HOST  = "0.0.0.0"
+FLASK_PORT  = 5000
+FLASK_DEBUG = False

@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Insider Threat — Live MySQL Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@700;800&display=swap');
+:root{
+  --bg:#080c10;--bg2:#0d1117;--bg3:#111820;
+  --border:#1e2d3d;--border2:#243344;
+  --text:#c9d1d9;--muted:#586e85;
+  --red:#ff4757;--orange:#ff7b39;--yellow:#ffd32a;
+  --green:#2ed573;--blue:#3d9eff;--purple:#a78bfa;--cyan:#00d2d3;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:0 24px;height:56px;position:sticky;top:0;z-index:200;}
+.topbar-left{display:flex;align-items:center;gap:14px;}
+.shield{width:34px;height:34px;background:linear-gradient(135deg,var(--blue),var(--purple));
+  border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.title{font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:#fff;}
+.subtitle{color:var(--muted);font-size:10px;margin-top:2px;}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;
+  font-size:10px;font-weight:600;border:1px solid;}
+.pill-green{background:rgba(46,213,115,.1);border-color:rgba(46,213,115,.4);color:var(--green);}
+.pill-red  {background:rgba(255,71,87,.1); border-color:rgba(255,71,87,.4); color:var(--red);}
+.pill-gray {background:rgba(88,110,133,.1);border-color:rgba(88,110,133,.4);color:var(--muted);}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:blink 1.5s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.clock{color:var(--blue);font-size:13px;font-weight:600;letter-spacing:.5px;}
+.countdown{font-size:10px;color:var(--muted);}
+.countdown span{color:var(--cyan);font-weight:700;}
+.btn{background:transparent;border:1px solid var(--border2);color:var(--text);
+  padding:5px 13px;border-radius:6px;cursor:pointer;font-family:inherit;
+  font-size:11px;transition:all .2s;white-space:nowrap;}
+.btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(61,158,255,.08);}
+.btn-blue{border-color:var(--blue);color:var(--blue);}
+.btn-red {border-color:var(--red); color:var(--red);}
+.btn-red:hover{background:rgba(255,71,87,.08);}
+
+/* ── CONFIG BAR ── */
+.config-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+  padding:10px 16px;margin-bottom:16px;}
+.config-bar label{color:var(--muted);font-size:10px;white-space:nowrap;}
+.config-input{background:var(--bg3);border:1px solid var(--border);color:var(--text);
+  padding:5px 10px;border-radius:5px;font-family:inherit;font-size:11px;width:240px;}
+.db-indicator{font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid;}
+
+/* ── MAIN ── */
+.main{padding:18px 24px;max-width:1600px;margin:0 auto;}
+
+/* ── KPI ── */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  padding:14px;position:relative;overflow:hidden;transition:border-color .3s;}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kc,var(--blue));}
+.kpi:hover{border-color:var(--border2);}
+.kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.kpi-val{font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:#fff;line-height:1;}
+.kpi-sub{font-size:10px;color:var(--muted);margin-top:5px;}
+.kpi-updated{font-size:9px;color:var(--border2);margin-top:3px;}
+
+/* ── GRIDS ── */
+.grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:14px;}
+.grid-main{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:14px;}
+.right-col{display:flex;flex-direction:column;gap:14px;}
+
+/* ── PANELS ── */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.panel-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:11px 16px;border-bottom:1px solid var(--border);background:var(--bg3);}
+.panel-title{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff;}
+.tag{font-size:9px;padding:2px 8px;border-radius:4px;font-weight:600;}
+.tag-blue{background:rgba(61,158,255,.15);color:var(--blue);border:1px solid rgba(61,158,255,.3);}
+.tag-green{background:rgba(46,213,115,.15);color:var(--green);border:1px solid rgba(46,213,115,.3);}
+.tag-red{background:rgba(255,71,87,.15);color:var(--red);border:1px solid rgba(255,71,87,.3);}
+.panel-body{padding:14px;}
+.chart-wrap{position:relative;height:210px;}
+.chart-sm{position:relative;height:160px;}
+
+/* ── TABLE ── */
+.tbl-scroll{max-height:400px;overflow-y:auto;}
+table{width:100%;border-collapse:collapse;font-size:11px;}
+thead{position:sticky;top:0;z-index:5;}
+th{background:var(--bg3);color:var(--muted);padding:8px 10px;text-align:left;
+  font-size:10px;text-transform:uppercase;letter-spacing:.7px;border-bottom:1px solid var(--border);}
+td{padding:7px 10px;border-bottom:1px solid rgba(30,45,61,.4);transition:background .2s;}
+tr:hover td{background:rgba(30,45,61,.4);cursor:pointer;}
+tr.new-row td{background:rgba(61,158,255,.06);}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;}
+.badge-CRITICAL{background:rgba(255,71,87,.2);color:var(--red);   border:1px solid rgba(255,71,87,.4);}
+.badge-HIGH    {background:rgba(255,123,57,.2);color:var(--orange);border:1px solid rgba(255,123,57,.4);}
+.badge-MEDIUM  {background:rgba(255,211,42,.2);color:var(--yellow);border:1px solid rgba(255,211,42,.4);}
+.badge-LOW     {background:rgba(46,213,115,.1);color:var(--green); border:1px solid rgba(46,213,115,.3);}
+
+.sbar{display:flex;align-items:center;gap:7px;}
+.sfill{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--purple));flex-shrink:0;}
+
+/* ── ALERTS ── */
+.alert-feed{display:flex;flex-direction:column;gap:7px;max-height:260px;overflow-y:auto;padding:12px;}
+.alert-item{display:flex;align-items:center;gap:10px;background:var(--bg3);
+  border:1px solid var(--border);border-left:3px solid var(--c,var(--blue));
+  border-radius:6px;padding:9px 13px;animation:slideIn .35s ease;}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.alert-body{flex:1;}
+.alert-user{font-weight:700;color:#fff;font-size:12px;}
+.alert-detail{color:var(--muted);font-size:10px;margin-top:2px;}
+.alert-right{text-align:right;flex-shrink:0;}
+.alert-score{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;}
+.alert-time{font-size:9px;color:var(--muted);}
+.ack-btn{background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:9px;margin-top:4px;}
+.ack-btn:hover{border-color:var(--green);color:var(--green);}
+
+/* ── METRIC ROWS ── */
+.metric-row{display:flex;justify-content:space-between;align-items:center;
+  padding:7px 0;border-bottom:1px solid rgba(30,45,61,.3);}
+.metric-row:last-child{border-bottom:none;}
+.metric-label{color:var(--muted);font-size:10px;}
+.metric-val{font-weight:700;font-size:13px;}
+.metric-bar-wrap{width:60px;height:3px;background:var(--border);border-radius:2px;margin-top:3px;}
+.metric-bar{height:3px;border-radius:2px;}
+
+/* ── DB STATUS BLOCK ── */
+.db-status-block{display:flex;flex-direction:column;gap:6px;font-size:11px;}
+.db-row{display:flex;justify-content:space-between;padding:5px 0;
+  border-bottom:1px solid rgba(30,45,61,.3);}
+.db-row:last-child{border-bottom:none;}
+
+/* ── DETAIL SIDE PANEL ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;}
+.overlay.open{display:block;}
+.side-panel{position:fixed;right:-460px;top:0;bottom:0;width:440px;
+  background:var(--bg2);border-left:1px solid var(--border);z-index:400;
+  overflow-y:auto;padding:24px;transition:right .3s ease;display:flex;flex-direction:column;gap:18px;}
+.side-panel.open{right:0;}
+.side-close{position:absolute;top:14px;right:14px;background:transparent;
+  border:1px solid var(--border2);color:var(--muted);width:28px;height:28px;
+  border-radius:6px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.side-close:hover{border-color:var(--red);color:var(--red);}
+.side-section-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--muted);margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+.drow{display:flex;justify-content:space-between;padding:6px 0;
+  border-bottom:1px solid rgba(30,45,61,.35);}
+.drow:last-child{border-bottom:none;}
+.drow-label{color:var(--muted);font-size:11px;}
+.drow-val{font-weight:700;font-size:11px;color:#fff;}
+
+/* ── FOOTER ── */
+.footer{text-align:center;color:var(--muted);font-size:9px;letter-spacing:1.5px;
+  padding:20px;text-transform:uppercase;border-top:1px solid var(--border);margin-top:14px;}
+
+/* ── HISTORY CHART ── */
+.hist-wrap{position:relative;height:130px;margin-top:10px;}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;z-index:999;padding:10px 16px;
+  border-radius:8px;font-size:11px;font-family:'JetBrains Mono',monospace;
+  animation:fadeIn .3s ease;max-width:380px;border:1px solid;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.toast-ok {background:rgba(46,213,115,.12); border-color:var(--green);color:var(--green);}
+.toast-err{background:rgba(255,71,87,.12);  border-color:var(--red);  color:var(--red);}
+.toast-inf{background:rgba(61,158,255,.12); border-color:var(--blue); color:var(--blue);}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="shield">🛡</div>
+    <div>
+      <div class="title">Insider Threat — Live MySQL Monitor</div>
+      <div class="subtitle">Flask + MySQL · IsolationForest + DBSCAN · Auto-refresh every 30 seconds</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="dbPill" class="pill pill-gray"><span class="dot"></span>CONNECTING</span>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="countdown">Next scan in <span id="cdTimer">30</span>s</div>
+    <button class="btn btn-blue" onclick="forceScan()">⚡ Scan Now</button>
+    <button class="btn btn-red"  onclick="exportThreats()">↓ Export</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- CONFIG BAR -->
+  <div class="config-bar">
+    <label>API URL:</label>
+    <input class="config-input" id="apiUrl" value="http://localhost:5000" placeholder="http://localhost:5000"/>
+    <button class="btn btn-blue" onclick="connect()">🔌 Connect to Server</button>
+    <div id="dbIndicator" class="db-indicator tag tag-blue" style="display:none"></div>
+    <span style="color:var(--muted);font-size:10px;margin-left:auto;">
+      Scans run automatically every 30s · data comes from MySQL
+    </span>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row">
+    <div class="kpi" style="--kc:var(--blue)">
+      <div class="kpi-label">Total Users in DB</div>
+      <div class="kpi-val" id="kUsers">—</div>
+      <div class="kpi-sub" id="kSessions">— sessions</div>
+    </div>
+    <div class="kpi" style="--kc:var(--red)">
+      <div class="kpi-label">Threats Flagged</div>
+      <div class="kpi-val" id="kThreats" style="color:var(--red)">—</div>
+      <div class="kpi-sub" id="kThreatPct">last scan</div>
+    </div>
+    <div class="kpi" style="--kc:var(--orange)">
+      <div class="kpi-label">Critical + High</div>
+      <div class="kpi-val" id="kCritHigh" style="color:var(--orange)">—</div>
+      <div class="kpi-sub" id="kCritHighSub">CRITICAL · HIGH</div>
+    </div>
+    <div class="kpi" style="--kc:var(--green)">
+      <div class="kpi-label">Unacknowledged Alerts</div>
+      <div class="kpi-val" id="kAlerts" style="color:var(--yellow)">—</div>
+      <div class="kpi-sub">stored in MySQL</div>
+    </div>
+    <div class="kpi" style="--kc:var(--purple)">
+      <div class="kpi-label">Scans Completed</div>
+      <div class="kpi-val" id="kScans" style="color:var(--purple)">—</div>
+      <div class="kpi-sub" id="kScanSub">since server start</div>
+    </div>
+    <div class="kpi" style="--kc:var(--cyan)">
+      <div class="kpi-label">Last Scan Duration</div>
+      <div class="kpi-val" id="kDuration" style="color:var(--cyan)">—</div>
+      <div class="kpi-sub" id="kScanTime">—</div>
+    </div>
+  </div>
+
+  <!-- ROW 1: score timeline + tier donut -->
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-hdr">
+        <span class="panel-title">Anomaly Score Distribution — Latest Scan</span>
+        <span class="tag tag-green">● LIVE · 30s refresh</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-hdr">
+        <span class="panel-title">Risk Tier Breakdown</span>
+        <span class="tag tag-blue" id="scanTimeTag">—</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-sm"><canvas id="tierChart"></canvas></div>
+        <div id="tierLegend" style="margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:11px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2: table + right column -->
+  <div class="grid-main">
+
+    <!-- USER TABLE -->
+    <div class="panel">
+      <div class="panel-hdr">
+        <span class="panel-title">Live User Risk Table — from MySQL</span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn" style="font-size:10px;padding:3px 9px;" onclick="filterTbl('ALL',this)">ALL</button>
+          <button class="btn" style="font-size:10px;padding:3px 9px;" onclick="filterTbl('CRITICAL',this)">CRITICAL</button>
+          <button class="btn" style="font-size:10px;padding:3px 9px;" onclick="filterTbl('HIGH',this)">HIGH</button>
+          <button class="btn" style="font-size:10px;padding:3px 9px;" onclick="filterTbl('THREAT',this)">THREATS</button>
+          <span class="tag tag-blue" id="tblCount">—</span>
+        </div>
+      </div>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr>
+            <th>#</th><th>User ID</th><th>Anomaly Score</th><th>Tier</th>
+            <th>USB Total</th><th>Files</th><th>Night Sess.</th>
+            <th>Off-Hrs%</th><th>Risk Score</th><th>Sessions</th><th>Threat</th>
+          </tr></thead>
+          <tbody id="tblBody"></tbody>
+        </table>
+      </div>
+      <div style="padding:7px 14px;border-top:1px solid var(--border);color:var(--muted);font-size:10px;"
+           id="tblFooter">Waiting for data...</div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right-col">
+
+      <!-- Model performance -->
+      <div class="panel">
+        <div class="panel-hdr"><span class="panel-title">Model Performance</span></div>
+        <div class="panel-body">
+          <div class="metric-row">
+            <div><div class="metric-label">Precision</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" id="barPrecision" style="background:var(--green);width:100%"></div></div></div>
+            <div class="metric-val" style="color:var(--green)" id="valPrecision">100.0%</div>
+          </div>
+          <div class="metric-row">
+            <div><div class="metric-label">Recall</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" id="barRecall" style="background:var(--blue);width:85.4%"></div></div></div>
+            <div class="metric-val" style="color:var(--blue)">85.4%</div>
+          </div>
+          <div class="metric-row">
+            <div><div class="metric-label">F1 Score</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="background:var(--purple);width:92.1%"></div></div></div>
+            <div class="metric-val" style="color:var(--purple)">92.1%</div>
+          </div>
+          <div class="metric-row">
+            <div><div class="metric-label">False Positive Rate</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="background:var(--red);width:0%"></div></div></div>
+            <div class="metric-val" style="color:var(--green)">0.0%</div>
+          </div>
+          <div class="metric-row">
+            <div><div class="metric-label">False Negative Rate</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="background:var(--orange);width:14.6%"></div></div></div>
+            <div class="metric-val" style="color:var(--orange)">14.6%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DB Connection status -->
+      <div class="panel">
+        <div class="panel-hdr"><span class="panel-title">MySQL Connection</span></div>
+        <div class="panel-body">
+          <div class="db-status-block" id="dbStatusBlock">
+            <div class="db-row"><span class="drow-label">Status</span>
+              <span id="dbConnVal" style="color:var(--muted)">Not connected</span></div>
+            <div class="db-row"><span class="drow-label">Host</span>
+              <span id="dbHost" style="color:var(--muted)">—</span></div>
+            <div class="db-row"><span class="drow-label">Database</span>
+              <span id="dbName" style="color:var(--muted)">—</span></div>
+            <div class="db-row"><span class="drow-label">Total Users</span>
+              <span id="dbUsers" style="color:var(--muted)">—</span></div>
+            <div class="db-row"><span class="drow-label">Total Sessions</span>
+              <span id="dbSessions" style="color:var(--muted)">—</span></div>
+            <div class="db-row"><span class="drow-label">Last Scan</span>
+              <span id="dbLastScan" style="color:var(--muted)">—</span></div>
+            <div class="db-row"><span class="drow-label">Next Scan In</span>
+              <span id="dbNext" style="color:var(--cyan)">—</span></div>
+          </div>
+          <div style="margin-top:10px;font-size:10px;color:var(--muted);">
+            Model: IsolationForest + DBSCAN + Risk Composite<br/>
+            Contamination: 0.666 · Features: 30 · PCA: 9 components
+          </div>
+        </div>
+      </div>
+
+      <!-- Insert single session -->
+      <div class="panel">
+        <div class="panel-hdr"><span class="panel-title">Insert Test Session → MySQL</span></div>
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:7px;">
+          <input id="sUser"  placeholder="User ID (e.g. EMP001)"
+            style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:4px;font-family:inherit;font-size:11px;width:100%"/>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <input id="sUsb"   type="number" min="0" placeholder="USB usage"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:4px;font-family:inherit;font-size:11px;"/>
+            <input id="sFile"  type="number" min="0" placeholder="File count"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:4px;font-family:inherit;font-size:11px;"/>
+            <input id="sEmail" type="number" min="0" placeholder="Email count"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:4px;font-family:inherit;font-size:11px;"/>
+            <select id="sSlot"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:4px;font-family:inherit;font-size:11px;">
+              <option value="morning">Morning</option>
+              <option value="afternoon">Afternoon</option>
+              <option value="evening">Evening</option>
+              <option value="night">Night</option>
+            </select>
+          </div>
+          <button class="btn btn-blue" onclick="insertSession()" style="width:100%;">
+            💾 Insert into MySQL
+          </button>
+          <div id="insertResult" style="display:none;font-size:10px;padding:6px 8px;border-radius:4px;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ALERTS -->
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-hdr">
+      <span class="panel-title">🚨 Alert Feed — HIGH + CRITICAL (from MySQL alerts table)</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="tag tag-red" id="alertBadge">0 alerts</span>
+        <button class="btn" style="font-size:10px;padding:2px 8px;" onclick="refreshAlerts()">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="alert-feed" id="alertFeed">
+      <div style="color:var(--muted);text-align:center;padding:20px;font-size:11px;">
+        Connect to server to see alerts from MySQL
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Insider Threat Detection System · MySQL + Flask · IsolationForest + DBSCAN ·
+    Auto-scan every 30 seconds · CERT Dataset · 2026
+  </div>
+</div>
+
+<!-- DETAIL SIDE PANEL -->
+<div class="overlay" id="overlay" onclick="closeSide()"></div>
+<div class="side-panel" id="sidePanel">
+  <button class="side-close" onclick="closeSide()">✕</button>
+  <div>
+    <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">USER THREAT PROFILE</div>
+    <div id="sUser2" style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#fff;"></div>
+    <div id="sTier"  style="margin-top:6px;"></div>
+  </div>
+  <div>
+    <div class="side-section-title">Latest Scan Scores</div>
+    <div id="sScores"></div>
+  </div>
+  <div>
+    <div class="side-section-title">Activity Summary</div>
+    <div id="sActivity"></div>
+  </div>
+  <div>
+    <div class="side-section-title">Score History (last 48 scans)</div>
+    <div id="sHistoryWrap">
+      <div style="color:var(--muted);font-size:10px;">Loading...</div>
+    </div>
+    <div class="hist-wrap"><canvas id="histChart"></canvas></div>
+  </div>
+  <div>
+    <div class="side-section-title">Recommendations</div>
+    <div id="sRecs"></div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──
+let API_URL        = 'http://localhost:5000';
+let isConnected    = false;
+let allUsers       = [];
+let currentFilter  = 'ALL';
+let cdSeconds      = 30;
+let cdInterval     = null;
+let autoInterval   = null;
+let histChartObj   = null;
+
+const TIER_COLORS  = {CRITICAL:'#ff4757',HIGH:'#ff7b39',MEDIUM:'#ffd32a',LOW:'#2ed573'};
+
+// ── CLOCK ──
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toTimeString().substr(0,8);
+}, 1000);
+
+// ── COUNTDOWN TIMER ──
+function startCountdown() {
+  cdSeconds = 30;
+  clearInterval(cdInterval);
+  cdInterval = setInterval(() => {
+    cdSeconds--;
+    document.getElementById('cdTimer').textContent = cdSeconds;
+    document.getElementById('dbNext').textContent  = cdSeconds + 's';
+    if (cdSeconds <= 0) { cdSeconds = 30; }
+  }, 1000);
+}
+
+// ── CONNECT ──
+async function connect() {
+  API_URL = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+  try {
+    const r = await fetch(`${API_URL}/api/status`, { signal: AbortSignal.timeout(4000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+
+    isConnected = true;
+    setDbPill('online', d.db_connected);
+
+    document.getElementById('dbConnVal').textContent  = d.db_connected ? '✅ Connected' : '⚠ DB offline';
+    document.getElementById('dbConnVal').style.color  = d.db_connected ? 'var(--green)' : 'var(--red)';
+    document.getElementById('dbHost').textContent     = d.db_host   || '—';
+    document.getElementById('dbName').textContent     = d.db_name   || '—';
+    document.getElementById('dbLastScan').textContent = d.last_scan ? new Date(d.last_scan).toLocaleTimeString() : 'Not yet';
+
+    toast(`✅ Connected · DB: ${d.db_connected ? 'online' : 'offline'}`, 'ok');
+
+    await Promise.all([loadStats(), loadThreats(), refreshAlerts()]);
+
+    // Start 30-second auto-refresh
+    clearInterval(autoInterval);
+    autoInterval = setInterval(async () => {
+      await Promise.all([loadStats(), loadThreats(), refreshAlerts()]);
+      startCountdown();
+    }, 30000);
+    startCountdown();
+
+  } catch(e) {
+    isConnected = false;
+    setDbPill('offline', false);
+    toast(`❌ Cannot reach ${API_URL} — is app_mysql.py running?`, 'err');
+  }
+}
+
+function setDbPill(status, dbOk) {
+  const pill = document.getElementById('dbPill');
+  if (status === 'online' && dbOk) {
+    pill.className = 'pill pill-green';
+    pill.innerHTML = '<span class="dot"></span>DB LIVE';
+  } else if (status === 'online' && !dbOk) {
+    pill.className = 'pill pill-red';
+    pill.innerHTML = '<span class="dot"></span>DB OFFLINE';
+  } else {
+    pill.className = 'pill pill-gray';
+    pill.innerHTML = '<span class="dot"></span>OFFLINE';
+  }
+}
+
+// ── LOAD STATS ──
+async function loadStats() {
+  try {
+    const r = await fetch(`${API_URL}/api/stats`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const ls = d.last_scan || {};
+
+    document.getElementById('kUsers').textContent    = (d.total_users    || 0).toLocaleString();
+    document.getElementById('kSessions').textContent = (d.total_sessions || 0).toLocaleString() + ' sessions';
+    document.getElementById('kScans').textContent    = (d.total_scans    || 0).toLocaleString();
+    document.getElementById('kAlerts').textContent   = (d.unack_alerts   || 0).toLocaleString();
+    document.getElementById('kDuration').textContent = ls.duration_ms ? ls.duration_ms + 'ms' : '—';
+    document.getElementById('kScanTime').textContent = ls.scan_time
+      ? new Date(ls.scan_time).toLocaleTimeString() : '—';
+
+    document.getElementById('dbUsers').textContent   = (d.total_users    || 0).toLocaleString();
+    document.getElementById('dbSessions').textContent= (d.total_sessions || 0).toLocaleString();
+    if (ls.scan_time)
+      document.getElementById('dbLastScan').textContent = new Date(ls.scan_time).toLocaleTimeString();
+
+    if (ls.critical_count !== undefined) {
+      document.getElementById('kCritHigh').textContent   = (ls.critical_count + ls.high_count);
+      document.getElementById('kCritHighSub').textContent= `CRITICAL:${ls.critical_count} · HIGH:${ls.high_count}`;
+    }
+  } catch(e) { console.warn('Stats error:', e); }
+}
+
+// ── LOAD THREATS ──
+async function loadThreats() {
+  try {
+    const r = await fetch(`${API_URL}/api/threats`);
+    if (!r.ok) return;
+    const d = await r.json();
+
+    allUsers = d.users || [];
+    const tc = d.tier_counts || {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
+
+    document.getElementById('kThreats').textContent  = d.threats || 0;
+    document.getElementById('kThreatPct').textContent=
+      allUsers.length ? `${((d.threats/allUsers.length)*100).toFixed(1)}% of users` : '—';
+    if (d.last_scan)
+      document.getElementById('scanTimeTag').textContent = new Date(d.last_scan).toLocaleTimeString();
+
+    renderTable();
+    updateDistChart(allUsers);
+    updateTierChart(tc);
+
+  } catch(e) { console.warn('Threats error:', e); }
+}
+
+// ── DISTRIBUTION CHART ──
+let distChart = null;
+function updateDistChart(users) {
+  const buckets = Array(10).fill(0);
+  users.forEach(u => {
+    const idx = Math.min(Math.floor((u.anomaly_score||0) * 10), 9);
+    buckets[idx]++;
+  });
+  const colors = buckets.map((_,i) => {
+    const v = (i+1)/10;
+    return v>0.75?'#ff4757':v>0.55?'#ff7b39':v>0.30?'#ffd32a':'#2ed573';
+  });
+  const labels = ['0.0-0.1','0.1-0.2','0.2-0.3','0.3-0.4','0.4-0.5',
+                  '0.5-0.6','0.6-0.7','0.7-0.8','0.8-0.9','0.9-1.0'];
+
+  if (!distChart) {
+    distChart = new Chart(document.getElementById('distChart'), {
+      type:'bar',
+      data:{ labels, datasets:[{ data:buckets, backgroundColor:colors, borderRadius:4 }] },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:{duration:400},
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{grid:{color:'rgba(30,45,61,.4)'},ticks:{color:'#586e85',font:{size:9}}},
+          y:{grid:{color:'rgba(30,45,61,.4)'},ticks:{color:'#586e85',font:{size:9}}}
+        }
+      }
+    });
+  } else {
+    distChart.data.datasets[0].data = buckets;
+    distChart.data.datasets[0].backgroundColor = colors;
+    distChart.update();
+  }
+}
+
+// ── TIER CHART ──
+let tierChart = null;
+function updateTierChart(tc) {
+  const data   = [tc.CRITICAL||0, tc.HIGH||0, tc.MEDIUM||0, tc.LOW||0];
+  const total  = data.reduce((a,b)=>a+b,0);
+  const colors = ['#ff4757','#ff7b39','#ffd32a','#2ed573'];
+  const labels = ['CRITICAL','HIGH','MEDIUM','LOW'];
+
+  if (!tierChart) {
+    tierChart = new Chart(document.getElementById('tierChart'), {
+      type:'doughnut',
+      data:{ labels, datasets:[{ data, backgroundColor:colors, borderColor:'#080c10', borderWidth:3 }] },
+      options:{
+        responsive:true, maintainAspectRatio:false, cutout:'65%', animation:{duration:400},
+        plugins:{
+          legend:{display:false},
+          tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.raw} users` }}
+        }
+      }
+    });
+  } else {
+    tierChart.data.datasets[0].data = data;
+    tierChart.update();
+  }
+
+  const leg = document.getElementById('tierLegend');
+  leg.innerHTML = labels.map((l,i) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="display:flex;align-items:center;gap:7px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:${colors[i]}"></div>
+        <span>${l}</span>
+      </div>
+      <span style="font-weight:700;color:${colors[i]}">${data[i]}
+        <span style="color:var(--muted);font-size:9px;font-weight:400">
+          (${total?Math.round(data[i]/total*100):0}%)
+        </span>
+      </span>
+    </div>`
+  ).join('');
+}
+
+// ── TABLE ──
+function filterTbl(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.btn').forEach(b => {
+    if (['ALL','CRITICAL','HIGH','THREAT'].includes(b.textContent.trim()))
+      b.style.borderColor = 'var(--border2)';
+  });
+  if (btn) { btn.style.borderColor = 'var(--blue)'; btn.style.color = 'var(--blue)'; }
+  renderTable();
+}
+
+function renderTable() {
+  let rows = [...allUsers];
+  if (currentFilter === 'CRITICAL') rows = rows.filter(u => u.risk_tier === 'CRITICAL');
+  else if (currentFilter === 'HIGH')    rows = rows.filter(u => u.risk_tier === 'HIGH');
+  else if (currentFilter === 'THREAT')  rows = rows.filter(u => u.is_threat);
+
+  document.getElementById('tblCount').textContent  = rows.length + ' users';
+  document.getElementById('tblFooter').textContent =
+    `Showing ${rows.length} of ${allUsers.length} users · Source: MySQL threat_scores table`;
+
+  const body = document.getElementById('tblBody');
+  body.innerHTML = '';
+  rows.forEach((u, i) => {
+    const barW = Math.round((u.anomaly_score||0) * 70);
+    const tr   = document.createElement('tr');
+    tr.onclick = () => openSide(u);
+    tr.innerHTML = `
+      <td style="color:var(--muted)">${i+1}</td>
+      <td style="font-weight:700;color:#fff">${u.user_id||u.user||'—'}</td>
+      <td><div class="sbar">
+        <div class="sfill" style="width:${barW}px"></div>
+        <span style="font-weight:700;color:#fff">${(u.anomaly_score||0).toFixed(4)}</span>
+      </div></td>
+      <td><span class="badge badge-${u.risk_tier}">${u.risk_tier}</span></td>
+      <td style="color:var(--cyan)">${(u.usb_usage_sum||0).toLocaleString()}</td>
+      <td style="color:var(--blue)">${(u.file_count_sum||0).toLocaleString()}</td>
+      <td style="color:var(--purple)">${u.night_sessions||0}</td>
+      <td style="color:var(--muted)">${((u.off_hours_pct||0)*100).toFixed(1)}%</td>
+      <td style="color:var(--orange)">${(u.risk_composite||u.risk_composite_sum||0).toLocaleString()}</td>
+      <td style="color:var(--muted)">${u.sessions_count||u.record_count||0}</td>
+      <td>${u.is_threat
+        ? '<span style="color:var(--red);font-weight:700">⚠ YES</span>'
+        : '<span style="color:var(--muted)">—</span>'}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+// ── ALERTS ──
+async function refreshAlerts() {
+  try {
+    const r = await fetch(`${API_URL}/api/alerts`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const alerts = d.alerts || [];
+
+    document.getElementById('alertBadge').textContent = alerts.length + ' alerts';
+    const feed = document.getElementById('alertFeed');
+
+    if (!alerts.length) {
+      feed.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;font-size:11px;">No alerts stored in MySQL</div>';
+      return;
+    }
+
+    feed.innerHTML = '';
+    alerts.forEach(a => {
+      const color = a.risk_tier==='CRITICAL' ? '#ff4757' : '#ff7b39';
+      const icon  = a.risk_tier==='CRITICAL' ? '🔴' : '🟠';
+      const t     = a.alert_time ? new Date(a.alert_time).toLocaleTimeString() : '—';
+      const div   = document.createElement('div');
+      div.className = 'alert-item';
+      div.style.setProperty('--c', color);
+      div.innerHTML = `
+        <div style="font-size:16px">${icon}</div>
+        <div class="alert-body">
+          <div class="alert-user">${a.user_id}
+            <span class="badge badge-${a.risk_tier}" style="margin-left:6px">${a.risk_tier}</span>
+            ${a.acknowledged ? '<span style="color:var(--muted);font-size:9px;margin-left:6px">✓ ACK</span>' : ''}
+          </div>
+          <div class="alert-detail">
+            Score: ${(a.anomaly_score||0).toFixed(4)} ·
+            USB: ${a.usb_total||0} ·
+            Files: ${a.file_total||0} ·
+            Night: ${a.night_sessions||0} ·
+            ${a.message||''}
+          </div>
+        </div>
+        <div class="alert-right">
+          <div class="alert-score" style="color:${color}">${(a.anomaly_score||0).toFixed(3)}</div>
+          <div class="alert-time">${t}</div>
+          ${!a.acknowledged
+            ? `<button class="ack-btn" onclick="ackAlert(${a.id},this)">Acknowledge</button>`
+            : ''}
+        </div>`;
+      feed.appendChild(div);
+    });
+  } catch(e) { console.warn('Alerts error:', e); }
+}
+
+async function ackAlert(id, btn) {
+  try {
+    await fetch(`${API_URL}/api/alert/acknowledge`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({alert_id: id})
+    });
+    btn.textContent = '✓ Acknowledged';
+    btn.disabled = true;
+    btn.style.color = 'var(--green)';
+    toast('Alert acknowledged', 'ok');
+  } catch(e) { toast('Failed to acknowledge', 'err'); }
+}
+
+// ── FORCE SCAN ──
+async function forceScan() {
+  if (!isConnected) { toast('Connect to server first', 'err'); return; }
+  toast('Triggering scan...', 'inf');
+  try {
+    await fetch(`${API_URL}/api/scan/trigger`);
+    setTimeout(async () => {
+      await Promise.all([loadStats(), loadThreats(), refreshAlerts()]);
+      startCountdown();
+      toast('✅ Scan complete — data refreshed from MySQL', 'ok');
+    }, 3500);
+  } catch(e) { toast('Scan trigger failed', 'err'); }
+}
+
+// ── INSERT SESSION ──
+async function insertSession() {
+  if (!isConnected) { toast('Connect to server first', 'err'); return; }
+  const user = document.getElementById('sUser').value.trim();
+  if (!user) { toast('Enter a User ID', 'err'); return; }
+
+  const body = {
+    user_id:      user,
+    session_date: new Date().toISOString().split('T')[0],
+    time_slot:    document.getElementById('sSlot').value,
+    logon_count:  1,
+    file_count:   parseInt(document.getElementById('sFile').value)  || 0,
+    email_count:  parseInt(document.getElementById('sEmail').value) || 0,
+    http_count:   0,
+    usb_usage:    parseInt(document.getElementById('sUsb').value)   || 0,
+    is_weekend:   [0,6].includes(new Date().getDay()) ? 1 : 0,
+  };
+
+  try {
+    const r = await fetch(`${API_URL}/api/session`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+
+    const el = document.getElementById('insertResult');
+    el.style.display = 'block';
+    el.style.background = 'rgba(46,213,115,.1)';
+    el.style.border = '1px solid rgba(46,213,115,.3)';
+    el.style.color = 'var(--green)';
+    el.textContent = `✅ Inserted into MySQL · user=${user} · usb=${body.usb_usage} · files=${body.file_count}`;
+    toast('Session inserted into MySQL — will be scored in next scan', 'ok');
+  } catch(e) {
+    toast('Insert failed: ' + e.message, 'err');
+  }
+}
+
+// ── SIDE PANEL ──
+async function openSide(u) {
+  const uid = u.user_id || u.user;
+  document.getElementById('sUser2').textContent = uid;
+  document.getElementById('sTier').innerHTML =
+    `<span class="badge badge-${u.risk_tier}" style="font-size:11px;padding:4px 10px">${u.risk_tier}</span>`;
+
+  const color = TIER_COLORS[u.risk_tier] || 'var(--text)';
+  document.getElementById('sScores').innerHTML = [
+    ['Anomaly Score',   (u.anomaly_score||0).toFixed(4), color],
+    ['IsoForest (55%)', (u.iso_score||0).toFixed(4),     'var(--blue)'],
+    ['Risk Comp (25%)', (u.rc_score||0).toFixed(4),      'var(--orange)'],
+    ['DBSCAN (20%)',    u.dbscan_outlier ? 'OUTLIER':'In cluster', u.dbscan_outlier?'var(--red)':'var(--muted)'],
+    ['Threat',          u.is_threat ? '⚠ YES':'— NO',   u.is_threat?'var(--red)':'var(--muted)'],
+  ].map(([k,v,c])=>`<div class="drow"><span class="drow-label">${k}</span>
+    <span class="drow-val" style="color:${c}">${v}</span></div>`).join('');
+
+  document.getElementById('sActivity').innerHTML = [
+    ['USB Total',        (u.usb_usage_sum||0).toLocaleString()],
+    ['Files Total',      (u.file_count_sum||0).toLocaleString()],
+    ['Emails Total',     (u.email_count_sum||0).toLocaleString()],
+    ['Night Sessions',   u.night_sessions||0],
+    ['Evening Sessions', u.evening_sessions||0],
+    ['Off-Hours %',      ((u.off_hours_pct||0)*100).toFixed(1)+'%'],
+    ['Risk Composite',   (u.risk_composite||u.risk_composite_sum||0).toLocaleString()],
+    ['Sessions',         u.sessions_count||u.record_count||0],
+  ].map(([k,v])=>`<div class="drow"><span class="drow-label">${k}</span>
+    <span class="drow-val">${v}</span></div>`).join('');
+
+  const recs = [];
+  if ((u.usb_usage_sum||0)>500) recs.push(['🔴','Block USB ports — high exfiltration volume']);
+  if ((u.file_count_sum||0)>500) recs.push(['🔴','Restrict file access — mass file transfers detected']);
+  if ((u.night_sessions||0)>5)   recs.push(['🟠','Investigate night-time login pattern']);
+  if ((u.off_hours_pct||0)>0.3)  recs.push(['🟠','Review off-hours access — '+(((u.off_hours_pct||0)*100).toFixed(0))+'% of sessions']);
+  if (u.dbscan_outlier)           recs.push(['🟡','User is a DBSCAN cluster outlier — behaviorally isolated']);
+  if (recs.length===0)            recs.push(['🟢','No immediate action required — continue monitoring']);
+
+  document.getElementById('sRecs').innerHTML = recs.map(([icon,txt])=>
+    `<div style="display:flex;gap:8px;padding:7px;background:var(--bg3);
+      border-radius:5px;margin-bottom:5px;font-size:11px;">
+      <span>${icon}</span><span>${txt}</span></div>`
+  ).join('');
+
+  // Load history from MySQL
+  document.getElementById('sHistoryWrap').innerHTML =
+    '<div style="color:var(--muted);font-size:10px;">Loading history from MySQL...</div>';
+  loadHistory(uid);
+
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('sidePanel').classList.add('open');
+}
+
+async function loadHistory(uid) {
+  try {
+    const r = await fetch(`${API_URL}/api/history/${uid}`);
+    const d = await r.json();
+    const history = (d.history || []).reverse();
+
+    document.getElementById('sHistoryWrap').innerHTML =
+      `<div style="color:var(--muted);font-size:10px;">${history.length} scan records found in MySQL</div>`;
+
+    if (!history.length) return;
+
+    const labels = history.map(h => new Date(h.scan_time).toLocaleTimeString());
+    const scores = history.map(h => h.anomaly_score);
+    const ptColors = scores.map(s =>
+      s>=0.75?'#ff4757':s>=0.55?'#ff7b39':s>=0.30?'#ffd32a':'#2ed573');
+
+    if (histChartObj) histChartObj.destroy();
+    histChartObj = new Chart(document.getElementById('histChart'), {
+      type:'line',
+      data:{
+        labels,
+        datasets:[{
+          label:'Anomaly Score', data:scores,
+          borderColor:'#3d9eff', backgroundColor:'rgba(61,158,255,.08)',
+          tension:0.4, fill:true, pointRadius:3,
+          pointBackgroundColor:ptColors, pointBorderColor:ptColors,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:{duration:300},
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{display:false},
+          y:{min:0,max:1,grid:{color:'rgba(30,45,61,.4)'},ticks:{color:'#586e85',font:{size:9}}}
+        }
+      }
+    });
+  } catch(e) {
+    document.getElementById('sHistoryWrap').innerHTML =
+      '<div style="color:var(--muted);font-size:10px;">History not available</div>';
+  }
+}
+
+function closeSide() {
+  document.getElementById('overlay').classList.remove('open');
+  document.getElementById('sidePanel').classList.remove('open');
+}
+
+// ── EXPORT ──
+function exportThreats() {
+  const threats = allUsers.filter(u => u.is_threat);
+  if (!threats.length) { toast('No threats to export', 'inf'); return; }
+  const cols = ['user_id','anomaly_score','risk_tier','usb_usage_sum','file_count_sum',
+                 'night_sessions','email_count_sum','off_hours_pct','risk_composite','sessions_count'];
+  let csv = cols.join(',') + '\n';
+  threats.forEach(u => { csv += cols.map(c => u[c]??'').join(',') + '\n'; });
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `insider_threats_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  toast(`Exported ${threats.length} threat users`, 'ok');
+}
+
+// ── TOAST ──
+function toast(msg, type='ok') {
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const div = document.createElement('div');
+  div.className = `toast toast-${type}`;
+  div.textContent = msg;
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 3500);
+}
+
+// ── AUTO-CONNECT ON LOAD ──
+window.addEventListener('load', connect);
+</script>
+</body>
+</html>
