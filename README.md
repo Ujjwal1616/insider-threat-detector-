@@ -1,4 +1,4 @@
-# Hybrid Unsupervised Insider Threat Detection System
+# Insider threat detection using behavioral analytics 
 
 ## Project Overview
 
